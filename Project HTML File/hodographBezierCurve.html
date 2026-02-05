@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bezier & Hodograph</title>
+<style>
+body{
+    margin:0;
+    background:#111;
+    color:#fff;
+    font-family:sans-serif
+}
+#menu{
+    position:fixed;
+    top:10px;
+    left:10px;
+    background:rgba(0,0,0,0.9);
+    padding:12px;
+    border-radius:8px;
+    z-index:10; 
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+#container{
+    display:flex;
+    justify-content:center;
+    gap:20px;
+    margin-top:80px
+}
+.canvas-group{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px
+}
+canvas{
+    border:2px solid #555;
+    background:#fff
+}
+.canvas-title{
+    color:#fff;
+    font-weight:bold;
+    margin:0
+}
+#controls{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    margin:20px
+}
+#tControl{
+    display:flex;
+    align-items:center;
+    gap:15px;
+    background:rgba(0,0,0,0.8);
+    padding:15px;
+    border-radius:8px
+}
+button{
+    padding:8px 16px;
+    background:#3498db;
+    color:#fff;
+    border:none;
+    border-radius:4px;
+    cursor:pointer
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<label><input type="checkbox" id="showBezier" checked> Bezier</label>
+<label><input type="checkbox" id="showControl" checked> Control points</label>
+<label><input type="checkbox" id="showHodo" checked> Hodograph</label>
+<label><input type="checkbox" id="showDeCasteljau" checked> De Casteljau</label>
+<label><input type="checkbox" id="showAnimation" checked> Animation</label>
+</div>
+
+<div id="container">
+<div class="canvas-group">
+<div class="canvas-title">Bezier Curve</div>
+<canvas id="bezier" width="500" height="500"></canvas>
+</div>
+<div class="canvas-group">
+<div class="canvas-title">Hodograph (Derivative)</div>
+<canvas id="hodograph" width="500" height="500"></canvas>
+</div>
+</div>
+
+<div id="controls">
+<div id="tControl">
+<span>t =</span>
+<input type="number" id="tInput" min="0" max="1" step="0.01" value="0.00">
+<input type="range" id="tSlider" min="0" max="100" value="0" style="width:300px">
+<button id="playPauseBtn">Play</button>
+<button id="resetBtn">Reset</button>
+<button id="clearBtn">Clear</button>
+</div>
+</div>
+
+<script>
+// WebGL setup initialization
+function initializeGL(canvas) {
+    const gl = canvas.getContext("webgl");
+    gl.clearColor(1,1,1,1);
+
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, `
+    attribute vec2 p;
+    void main() {
+        gl_Position = vec4(p, 0.0, 1.0);
+        gl_PointSize = 8.5;
+    }
+    `);
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, `
+    precision mediump float; 
+    uniform vec3 c; 
+    void main(){
+        gl_FragColor = vec4(c,1.0);
+    }
+    `);
+    gl.compileShader(fragmentShader);
+    
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vertexShader);
+    gl.attachShader(prog, fragmentShader);
+
+    gl.linkProgram(prog);
+    
+    return {gl, prog};
+}
+
+// Draw function
+function drawGL(ctx, points, mode, color) {
+    if(points.length == 0) return;
+    const {gl, prog} = ctx;
+    
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points.flat()), gl.STATIC_DRAW);
+    
+    gl.useProgram(prog);
+    const position = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(position);
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+    
+    gl.uniform3fv(gl.getUniformLocation(prog, "c"), color);
+    gl.drawArrays(mode, 0, points.length);
+}
+
+// Algorithms
+
+// Calculate Bezier points
+function bezierPoint(points, t){
+    let p = points.map(v => [...v]);
+    for (let k = p.length - 1; k > 0; k--){
+        for (let i = 0; i < k; i++) {
+            p[i] = [(1-t) * p[i][0] + t * p[i+1][0], (1-t) * p[i][1] + t * p[i+1][1]];
+        }
+    }
+    return p[0];
+}
+
+// Get Bezier points for the curve
+function sampleBezier(points, steps = 100){
+    const out = [];
+    for(let i = 0; i <= steps; i++) {
+        // Calculate point at current t value
+        out.push(bezierPoint(points, i/steps));
+    }
+    return out; // array of points along the curve
+}
+
+// De Casteljau Levels
+function getDeCasteljauPoints(points, t){
+    const levels = [];
+    const temp = points.map(p => [...p]);
+    
+    // First level is the original points
+    levels.push(temp.map(p => [...p]));
+    
+    // Calculate intermediate points
+    for(let level = 1; level < points.length; level++) {
+        const prevLevel = levels[level-1];
+        const newLevel = [];
+        
+        for(let i = 0; i < prevLevel.length - 1; i++){
+            newLevel.push([
+                (1-t) * prevLevel[i][0] + t * prevLevel[i+1][0],
+                (1-t) * prevLevel[i][1] + t * prevLevel[i+1][1]
+            ]);
+        }
+        levels.push(newLevel);
+    }
+    
+    return levels; 
+}
+
+// Initialize both canvases
+const ctxB = initializeGL(document.getElementById("bezier"));
+const ctxH = initializeGL(document.getElementById("hodograph"));
+let controlPoints = [], selected = null, t = 0;
+let playing = false, dir = 1;
+let show = {bezier:true, control:true, hodo:true, deCasteljau:true, animation:true};
+
+// FIXED: Proper UI setup with immediate function execution
+function setupCheckbox(id, key) {
+    const cb = document.getElementById(id);
+    cb.checked = show[key];
+    cb.onchange = function() {
+        show[key] = this.checked;
+    };
+}
+
+// Set up the checkboxes
+setupCheckbox('showBezier', 'bezier');
+setupCheckbox('showControl', 'control');
+setupCheckbox('showHodo', 'hodo');
+setupCheckbox('showDeCasteljau', 'deCasteljau');
+setupCheckbox('showAnimation', 'animation');
+
+// Play button for animation
+const playBtn = document.getElementById("playPauseBtn");
+
+function updateT() {
+    document.getElementById("tSlider").value = t*100;
+    document.getElementById("tInput").value = t.toFixed(2);
+}
+
+// UI handlers
+document.getElementById("tSlider").oninput = e => { t = e.target.value/100; updateT(); };
+document.getElementById("tInput").oninput = e => { t = Math.max(0,Math.min(1,parseFloat(e.target.value)||0)); updateT(); };
+document.getElementById("resetBtn").onclick = () => { t = 0; playing = false; dir = 1; playBtn.textContent = "Play"; updateT(); };
+document.getElementById("clearBtn").onclick = () => { controlPoints = []; selected = null; t = 0; playing = false; playBtn.textContent = "Play"; updateT(); };
+
+// Play/Pause handler
+playBtn.onclick = () => {
+    playing = !playing;
+    playBtn.textContent = playing ? "Pause" : "Play";
+};
+
+// Animation
+function animate() {
+    if(playing && show.animation) {
+        t += 0.005 * dir;
+        if(t >= 1) { t = 1; dir = -1; }
+        if(t <= 0) { t = 0; dir = 1; }
+        updateT();
+    }
+    requestAnimationFrame(animate);
+}
+animate();
+
+// Track click timing for double click detection
+let lastClickTime = 0;
+let lastClickedPoint = null;
+
+// Add a new point or double click to delete one
+const canvas = document.getElementById("bezier");
+canvas.onmousedown = e => {
+    const r = canvas.getBoundingClientRect();
+    const x = ((e.clientX - r.left)/500)*2-1;
+    const y = -(((e.clientY - r.top)/500)*2-1);
+    
+    const currentTime = Date.now();
+    const clickDelay = currentTime - lastClickTime;
+    
+    // Double click
+    if (clickDelay < 300 && lastClickedPoint !== null) {
+        const dx = lastClickedPoint[0] - x;
+        const dy = lastClickedPoint[1] - y;
+        if (Math.hypot(dx, dy) < 0.05) {
+            for(let i = 0; i < controlPoints.length; i++) {
+                const dx2 = controlPoints[i][0] - x;
+                const dy2 = controlPoints[i][1] - y;
+                if(Math.hypot(dx2, dy2) < 0.05) {
+                    controlPoints.splice(i, 1);
+                    selected = null;
+                    lastClickTime = 0;
+                    lastClickedPoint = null;
+                    return;
+                }
+            }
+        }
+    }
+    
+    // Single click
+    selected = null;
+    for(let i = 0; i < controlPoints.length; i++) {
+        const dx = controlPoints[i][0] - x;
+        const dy = controlPoints[i][1] - y;
+        if(Math.hypot(dx, dy) < 0.05) { 
+            selected = i; 
+            lastClickTime = currentTime;
+            lastClickedPoint = controlPoints[i];
+            return; 
+        }
+    }
+    
+    controlPoints.push([x, y]);
+    selected = controlPoints.length - 1;
+    lastClickTime = currentTime;
+    lastClickedPoint = controlPoints[selected];
+};
+
+// Drag control points
+canvas.onmousemove = e => {
+    if(selected !== null) {
+        const r = canvas.getBoundingClientRect();
+        const x = ((e.clientX - r.left)/500)*2-1;
+        const y = -(((e.clientY - r.top)/500)*2-1);
+        controlPoints[selected] = [x, y];
+        lastClickedPoint = controlPoints[selected];
+    }
+};
+
+// Release control point
+canvas.onmouseup = canvas.onmouseleave = () => { 
+    selected = null; 
+};
+
+function render() {
+    // Bezier canvas
+    ctxB.gl.clear(ctxB.gl.COLOR_BUFFER_BIT);
+    
+    // Draw control polygon and control points
+    if(show.control && controlPoints.length) {
+        drawGL(ctxB, controlPoints, ctxB.gl.LINE_STRIP, [0.1,0.1,0.1]);
+        drawGL(ctxB, controlPoints, ctxB.gl.POINTS, [0,0.5,0.8]);
+    }
+    
+    // Draw Bezier curve
+    if(show.bezier && controlPoints.length > 1) {
+        drawGL(ctxB, sampleBezier(controlPoints), ctxB.gl.LINE_STRIP, [0.8,0.2,0.2]);
+    }
+    
+    // Draw de Casteljau algorithm
+    if(show.deCasteljau && controlPoints.length > 1 && t > 0 && t < 1) {
+        const levels = getDeCasteljauPoints(controlPoints, t);
+        
+        // Draw lines between points at each level
+        for(let level = 0; level < levels.length - 1; level++) {
+            const currentPoints = levels[level];
+            drawGL(ctxB, currentPoints, ctxB.gl.LINE_STRIP, [0.5,0.5,0.7]);
+        }
+        
+        // Draw points for each level
+        for(let level = 0; level < levels.length; level++) {
+            const points = levels[level];
+            drawGL(ctxB, points, ctxB.gl.POINTS, [0.4,0.8,0]);
+        }
+    }
+    
+    // Draw animation for Bezier curve
+    if(show.animation && t > 0 && controlPoints.length > 1) {
+        const tracedPoints = [];
+        for(let i = 0; i <= Math.floor(t * 100); i++) {
+            tracedPoints.push(bezierPoint(controlPoints, i / 100));
+        }
+        drawGL(ctxB, tracedPoints, ctxB.gl.LINE_STRIP, [0,0,0]);
+    }
+    
+    // Hodograph canvas
+    ctxH.gl.clear(ctxH.gl.COLOR_BUFFER_BIT);
+    if(show.hodo && controlPoints.length >= 2) {
+        const n = controlPoints.length - 1;
+        const deriv = [];
+        for(let i = 0; i < n; i++) {
+            deriv.push([
+                (controlPoints[i+1][0]-controlPoints[i][0]),
+                (controlPoints[i+1][1]-controlPoints[i][1])
+            ]);
+        }
+        
+        // Scale for better visualization if a vector would leave the canvas
+        let maxMag = 0;
+        for(const p of deriv) maxMag = Math.max(maxMag, Math.hypot(p[0], p[1]));
+        const scale = maxMag > 0 ? 0.7/maxMag : 1;
+        
+        const scaled = deriv.map(p => [p[0]*scale, p[1]*scale]);
+        
+        // Draw vectors from central point
+        for(const p of scaled) {
+            drawGL(ctxH, [[0,0], p], ctxH.gl.LINES, [0.3,0.7,0.3]);
+        }
+        
+        // Draw hodograph control points
+        drawGL(ctxH, scaled, ctxH.gl.POINTS, [0,0.5,0.8]);
+
+        // Draw line in between the control points for the hodograph
+        drawGL(ctxH, scaled, ctxH.gl.LINE_STRIP, [0.4,0.4,0.4]);
+        
+        // Draw the hodogrpah curve
+        const sampled = sampleBezier(deriv).map(p => [p[0]*scale, p[1]*scale]);
+        drawGL(ctxH, sampled, ctxH.gl.LINE_STRIP, [0.8,0.2,0.2]);
+
+        // Central point
+        drawGL(ctxH, [[0,0]], ctxH.gl.POINTS, [0,0,0]);
+        
+        // Draw the animation vector for t > 0
+        if(t > 0) {
+            const pt = bezierPoint(deriv, t);
+            drawGL(ctxH, [[0,0],[pt[0] * scale, pt[1] * scale]], ctxH.gl.LINES, [0,0,0]);
+            drawGL(ctxH, [[pt[0] * scale, pt[1] * scale]], ctxH.gl.POINTS, [0,0,0]);
+        }
+    }
+    
+    requestAnimationFrame(render);
+}
+render();
+</script>
+</body>
+</html>
