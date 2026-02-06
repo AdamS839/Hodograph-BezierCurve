@@ -76,6 +76,12 @@ button{
 <label><input type="checkbox" id="showHodo" checked> Hodograph</label>
 <label><input type="checkbox" id="showDeCasteljau" checked> De Casteljau</label>
 <label><input type="checkbox" id="showAnimation" checked> Animation</label>
+
+<div style="margin-top:10px; padding-top:10px; border-top:1px solid #444; font-size:15px; color:#aaa;">
+    <div>• Left click: Add point</div>
+    <div>• Left click + drag: Move point</div>
+    <div>• Right click: Remove point</div>
+</div>
 </div>
 
 <div id="container">
@@ -334,7 +340,11 @@ function render() {
         // Draw points for each level
         for(let level = 0; level < levels.length; level++) {
             const points = levels[level];
-            drawGL(ctxB, points, ctxB.gl.POINTS, [0.4,0.8,0]);
+            if (level === levels.length - 1) {
+                drawGL(ctxB, points, ctxB.gl.POINTS, [1,0.5,0]);
+            } else {
+                drawGL(ctxB, points, ctxB.gl.POINTS, [0,0.8,0.9]);
+            }
         }
     }
     
