@@ -256,56 +256,38 @@ function animate() {
 }
 animate();
 
-// Track click timing for double click detection
-let lastClickTime = 0;
-let lastClickedPoint = null;
-
-// Add a new point or double click to delete one
 const canvas = document.getElementById("bezier");
+canvas.oncontextmenu = e => e.preventDefault();
 canvas.onmousedown = e => {
     const r = canvas.getBoundingClientRect();
     const x = ((e.clientX - r.left)/500)*2-1;
     const y = -(((e.clientY - r.top)/500)*2-1);
     
-    const currentTime = Date.now();
-    const clickDelay = currentTime - lastClickTime;
-    
-    // Double click
-    if (clickDelay < 300 && lastClickedPoint !== null) {
-        const dx = lastClickedPoint[0] - x;
-        const dy = lastClickedPoint[1] - y;
-        if (Math.hypot(dx, dy) < 0.05) {
-            for(let i = 0; i < controlPoints.length; i++) {
-                const dx2 = controlPoints[i][0] - x;
-                const dy2 = controlPoints[i][1] - y;
-                if(Math.hypot(dx2, dy2) < 0.05) {
-                    controlPoints.splice(i, 1);
-                    selected = null;
-                    lastClickTime = 0;
-                    lastClickedPoint = null;
-                    return;
-                }
+    // 0 - left click, 1 - middle click, 2 - right click; e.button === ?
+    if (e.button === 2) { // remove
+        for(let i = 0; i < controlPoints.length; i++) {
+            const dx = controlPoints[i][0] - x;
+            const dy = controlPoints[i][1] - y;
+            if(Math.hypot(dx, dy) < 0.05) {
+                controlPoints.splice(i, 1);
+                selected = null;
+                return;
             }
         }
-    }
-    
-    // Single click
-    selected = null;
-    for(let i = 0; i < controlPoints.length; i++) {
-        const dx = controlPoints[i][0] - x;
-        const dy = controlPoints[i][1] - y;
-        if(Math.hypot(dx, dy) < 0.05) { 
-            selected = i; 
-            lastClickTime = currentTime;
-            lastClickedPoint = controlPoints[i];
-            return; 
+    } else if (e.button === 0){ // add
+        selected = null;
+        for(let i = 0; i < controlPoints.length; i++) {
+            const dx = controlPoints[i][0] - x;
+            const dy = controlPoints[i][1] - y;
+            if(Math.hypot(dx, dy) < 0.05) { 
+                selected = i; 
+                return; 
+            }
         }
+        controlPoints.push([x, y]);
+        selected = controlPoints.length - 1;
     }
-    
-    controlPoints.push([x, y]);
-    selected = controlPoints.length - 1;
-    lastClickTime = currentTime;
-    lastClickedPoint = controlPoints[selected];
+    else return; // else nothing
 };
 
 // Drag control points
