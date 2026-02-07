@@ -161,7 +161,7 @@ function drawGL(ctx, points, mode, color) {
 
 // Algorithms
 
-// Calculate Bezier points
+// Calculate Bezier points using de Casteljau
 function bezierPoint(points, t){
     let p = points.map(v => [...v]);
     for (let k = p.length - 1; k > 0; k--){
@@ -214,7 +214,6 @@ let controlPoints = [], selected = null, t = 0;
 let playing = false, dir = 1;
 let show = {bezier:true, control:true, hodo:true, deCasteljau:true, animation:true};
 
-// FIXED: Proper UI setup with immediate function execution
 function setupCheckbox(id, key) {
     const cb = document.getElementById(id);
     cb.checked = show[key];
@@ -238,13 +237,11 @@ function updateT() {
     document.getElementById("tInput").value = t.toFixed(2);
 }
 
-// UI handlers
 document.getElementById("tSlider").oninput = e => { t = e.target.value/100; updateT(); };
 document.getElementById("tInput").oninput = e => { t = Math.max(0,Math.min(1,parseFloat(e.target.value)||0)); updateT(); };
 document.getElementById("resetBtn").onclick = () => { t = 0; playing = false; dir = 1; playBtn.textContent = "Play"; updateT(); };
 document.getElementById("clearBtn").onclick = () => { controlPoints = []; selected = null; t = 0; playing = false; playBtn.textContent = "Play"; updateT(); };
 
-// Play/Pause handler
 playBtn.onclick = () => {
     playing = !playing;
     playBtn.textContent = playing ? "Pause" : "Play";
@@ -269,7 +266,6 @@ canvas.onmousedown = e => {
     const x = ((e.clientX - r.left)/500)*2-1;
     const y = -(((e.clientY - r.top)/500)*2-1);
     
-    // 0 - left click, 1 - middle click, 2 - right click; e.button === ?
     if (e.button === 2) { // remove
         for(let i = 0; i < controlPoints.length; i++) {
             const dx = controlPoints[i][0] - x;
@@ -372,8 +368,7 @@ function render() {
         // Scale for better visualization if a vector would leave the canvas
         let maxMag = 0;
         for(const p of deriv) maxMag = Math.max(maxMag, Math.hypot(p[0], p[1]));
-        const scale = maxMag > 0 ? 0.7/maxMag : 1;
-        
+        const scale = maxMag > 0 ? (0.7 / maxMag) : 1;
         const scaled = deriv.map(p => [p[0]*scale, p[1]*scale]);
         
         // Draw vectors from central point
