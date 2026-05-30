@@ -161,7 +161,7 @@ function drawGL(ctx, points, mode, color) {
 
 // Algorithms
 
-// Calculate Bezier points using de Casteljau
+// points of bezier
 function bezierPoint(points, t){
     let p = points.map(v => [...v]);
     for (let k = p.length - 1; k > 0; k--){
@@ -172,25 +172,22 @@ function bezierPoint(points, t){
     return p[0];
 }
 
-// Get Bezier points for the curve
+    
 function sampleBezier(points, steps = 100){
     const out = [];
     for(let i = 0; i <= steps; i++) {
-        // Calculate point at current t value
         out.push(bezierPoint(points, i/steps));
     }
-    return out; // array of points along the curve
+    return out;
 }
 
-// De Casteljau Levels
+// De Casteljau
 function getDeCasteljauPoints(points, t){
     const levels = [];
     const temp = points.map(p => [...p]);
     
-    // First level is the original points
     levels.push(temp.map(p => [...p]));
     
-    // Calculate intermediate points
     for(let level = 1; level < points.length; level++) {
         const prevLevel = levels[level-1];
         const newLevel = [];
@@ -207,7 +204,7 @@ function getDeCasteljauPoints(points, t){
     return levels; 
 }
 
-// Initialize both canvases
+// Init
 const ctxB = initializeGL(document.getElementById("bezier"));
 const ctxH = initializeGL(document.getElementById("hodograph"));
 let controlPoints = [], selected = null, t = 0;
@@ -222,14 +219,12 @@ function setupCheckbox(id, key) {
     };
 }
 
-// Set up the checkboxes
 setupCheckbox('showBezier', 'bezier');
 setupCheckbox('showControl', 'control');
 setupCheckbox('showHodo', 'hodo');
 setupCheckbox('showDeCasteljau', 'deCasteljau');
 setupCheckbox('showAnimation', 'animation');
 
-// Play button for animation
 const playBtn = document.getElementById("playPauseBtn");
 
 function updateT() {
@@ -247,7 +242,7 @@ playBtn.onclick = () => {
     playBtn.textContent = playing ? "Pause" : "Play";
 };
 
-// Animation
+// Anim
 function animate() {
     if(playing && show.animation) {
         t += 0.005 * dir;
@@ -289,10 +284,10 @@ canvas.onmousedown = e => {
         controlPoints.push([x, y]);
         selected = controlPoints.length - 1;
     }
-    else return; // else nothing
+    else return;
 };
 
-// Drag control points
+// drag
 canvas.onmousemove = e => {
     if(selected !== null) {
         const r = canvas.getBoundingClientRect();
@@ -303,37 +298,31 @@ canvas.onmousemove = e => {
     }
 };
 
-// Release control point
+    
 canvas.onmouseup = canvas.onmouseleave = () => { 
     selected = null; 
 };
 
 function render() {
-    // Bezier canvas
     ctxB.gl.clear(ctxB.gl.COLOR_BUFFER_BIT);
     
-    // Draw control polygon and control points
     if(show.control && controlPoints.length) {
         drawGL(ctxB, controlPoints, ctxB.gl.LINE_STRIP, [0.1,0.1,0.1]);
         drawGL(ctxB, controlPoints, ctxB.gl.POINTS, [0,0.5,0.8]);
     }
     
-    // Draw Bezier curve
     if(show.bezier && controlPoints.length > 1) {
         drawGL(ctxB, sampleBezier(controlPoints), ctxB.gl.LINE_STRIP, [0.8,0.2,0.2]);
     }
     
-    // Draw de Casteljau algorithm
     if(show.deCasteljau && controlPoints.length > 1 && t > 0 && t < 1) {
         const levels = getDeCasteljauPoints(controlPoints, t);
         
-        // Draw lines between points at each level
         for(let level = 0; level < levels.length - 1; level++) {
             const currentPoints = levels[level];
             drawGL(ctxB, currentPoints, ctxB.gl.LINE_STRIP, [0.5,0.5,0.7]);
         }
         
-        // Draw points for each level
         for(let level = 0; level < levels.length; level++) {
             const points = levels[level];
             if (level === levels.length - 1) {
@@ -344,7 +333,6 @@ function render() {
         }
     }
     
-    // Draw animation for Bezier curve
     if(show.animation && t > 0 && controlPoints.length > 1) {
         const tracedPoints = [];
         for(let i = 0; i <= Math.floor(t * 100); i++) {
@@ -353,7 +341,7 @@ function render() {
         drawGL(ctxB, tracedPoints, ctxB.gl.LINE_STRIP, [0,0,0]);
     }
     
-    // Hodograph canvas
+    // Hodograph
     ctxH.gl.clear(ctxH.gl.COLOR_BUFFER_BIT);
     if(show.hodo && controlPoints.length >= 2) {
         const n = controlPoints.length - 1;
@@ -365,31 +353,30 @@ function render() {
             ]);
         }
         
-        // Scale for better visualization if a vector would leave the canvas
+        // scale
         let maxMag = 0;
         for(const p of deriv) maxMag = Math.max(maxMag, Math.hypot(p[0], p[1]));
         const scale = maxMag > 0 ? (0.7 / maxMag) : 1;
         const scaled = deriv.map(p => [p[0]*scale, p[1]*scale]);
         
-        // Draw vectors from central point
+        // vectors
         for(const p of scaled) {
             drawGL(ctxH, [[0,0], p], ctxH.gl.LINES, [0.3,0.7,0.3]);
         }
         
-        // Draw hodograph control points
+        // points
         drawGL(ctxH, scaled, ctxH.gl.POINTS, [0,0.5,0.8]);
 
-        // Draw line in between the control points for the hodograph
+        // line
         drawGL(ctxH, scaled, ctxH.gl.LINE_STRIP, [0.4,0.4,0.4]);
         
-        // Draw the hodogrpah curve
+        // curve
         const sampled = sampleBezier(deriv).map(p => [p[0]*scale, p[1]*scale]);
         drawGL(ctxH, sampled, ctxH.gl.LINE_STRIP, [0.8,0.2,0.2]);
 
-        // Central point
+        // central
         drawGL(ctxH, [[0,0]], ctxH.gl.POINTS, [0,0,0]);
         
-        // Draw the animation vector for t > 0
         if(t > 0) {
             const pt = bezierPoint(deriv, t);
             drawGL(ctxH, [[0,0],[pt[0] * scale, pt[1] * scale]], ctxH.gl.LINES, [0,0,0]);
